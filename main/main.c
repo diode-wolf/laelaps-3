@@ -2,15 +2,17 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
+#include "esp_log.h"
 #include "sdkconfig.h"
 #include "main.h"
+#include "functions.h"
 
 // Global Variables - BAD
 static uint8_t led1_state = 0;
 static uint8_t led2_state = 0;
 
-TaskHandle_t LED1 = NULL;
-TaskHandle_t LED2 = NULL;
+TaskHandle_t xToggle1_Handle = NULL;
+TaskHandle_t xToggle2_Handle = NULL;
 
 void Init_Ports(void){
     gpio_reset_pin(LED1_PIN);
@@ -23,16 +25,15 @@ void Toggle_1(void *args){
     while(1){
         gpio_set_level(LED1_PIN, led1_state);
         led1_state = !led1_state;
-        vTaskDelay(LED1_RATE / portTICK_PERIOD_MS);
+        vTaskDelay(pdMS_TO_TICKS(LED1_RATE));
     }
 }
 
 void Toggle_2(void *args){
     while(1){
-        // gpio_set_level(LED2_PIN, led2_state);
-        // led2_state = !led2_state;
-        printf("T2 exe\n");
-        vTaskDelay(LED2_RATE / portTICK_PERIOD_MS);
+        gpio_set_level(LED2_PIN, led2_state);
+        led2_state = !led2_state;
+        vTaskDelay(pdMS_TO_TICKS(LED2_RATE));
     }
 }
 
@@ -42,9 +43,9 @@ void app_main(void){
     Init_Ports();
 
     // Start Tasks
-    xTaskCreate(Toggle_1, "Toggle_1", 512, NULL, 2, &LED1);
-    //xTaskCreate(Toggle_2, "Toggle_2", 512, NULL, 1, &LED2);
+    xTaskCreate(Toggle_1, "Toggle_1", 4096, NULL, 2, &xToggle1_Handle);
+    xTaskCreate(Toggle_2, "Toggle_2", 4096, NULL, 1, &xToggle2_Handle);
 
-    // Done with app_main. Main task will self delete after return from app_main
+    // Done with app_main. Main task will self delete
     return;
 }
