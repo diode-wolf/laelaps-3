@@ -11,7 +11,7 @@ Last Built With ESP-IDF v5.2.2
 
 // Include Header Libraries
 #include <stdio.h>
-#include <stdlib>
+#include <stdlib.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
@@ -54,11 +54,13 @@ void Read_GPS(void *args){
                 Extract_GPS_Data((char*) gps_rx_data, start_data_idx, data_length, &current_gps_data);
 
                 // Temp debug
-                ESP_LOGI(GPS_TAG, "Lattitude: %.5f\n", current_gps_data.lat);
-                ESP_LOGI(GPS_TAG, "Longitude: %.5f\n", current_gps_data.lon);
-                ESP_LOGI(GPS_TAG, "Altitude: %.1f\n", current_gps_data.altitude);
-                ESP_LOGI(GPS_TAG, "UTC Time: %d:%d:%d\n", current_gps_data.utc_hours, current_gps_data.utc_minutes, current_gps_data.utc_seconds);
-                ESP_LOGI(GPS_TAG, "# Sats: %d\n", current_gps_data.sats);
+                ESP_LOGI(GPS_TAG, "UTC Time: %d:%d:%d", current_gps_data.utc_hour, current_gps_data.utc_minute, current_gps_data.utc_second);
+                ESP_LOGI(GPS_TAG, "Lattitude: %.5f", current_gps_data.lat);
+                ESP_LOGI(GPS_TAG, "Longitude: %.5f", current_gps_data.lon);
+                ESP_LOGI(GPS_TAG, "Altitude: %.1f", current_gps_data.altitude);
+                ESP_LOGI(GPS_TAG, "# Sats: %d", current_gps_data.sats);
+                
+                ESP_LOGI(GPS_TAG, "Stack High Water: %d", uxTaskGetStackHighWaterMark(NULL));
             }
         }
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -80,7 +82,6 @@ int8_t Extract_GPS_Data(char *data, uint16_t start_idx, uint16_t len, gps_data_t
     char gps_strings[NMEA_FIELDS][NMEA_FIELD_MAX_LEN];
     float lattitude = 0.0;
     float longitude = 0.0;
-    float altitude = 0.0;
 
     // Initalize arrays to hold gps data
     for(i = 0; i < NMEA_FIELDS; i++){
@@ -158,7 +159,7 @@ int8_t Get_GGA_Start(char* array, uint16_t len_to_scan, uint16_t* s_idx_ptr, uin
             *s_idx_ptr = i + 1;         // +1 gives 1st character of data rather than end of "$GPGGA," string
 
             // DEBUG
-            ESP_LOGI(GGA_Start_TAG, "Found Start, %u", *s_idx_ptr);
+            //ESP_LOGI(GGA_Start_TAG, "Found Start, %u", *s_idx_ptr);
         }
 
         // Once found start, save index of next new line character
@@ -166,7 +167,7 @@ int8_t Get_GGA_Start(char* array, uint16_t len_to_scan, uint16_t* s_idx_ptr, uin
             *len_target_str = i - *s_idx_ptr;
 
             // DEBUG
-            ESP_LOGI(GGA_Start_TAG, "Found End, %u", *len_target_str);
+            //ESP_LOGI(GGA_Start_TAG, "Found End, %u", *len_target_str);
             return TRUE;
         }
     }
@@ -197,7 +198,7 @@ integer. If the specified characters are not numeric, function returns 0. Number
 */
 uint8_t Str_2_Int(char* array, uint8_t s_idx, uint8_t len){
     uint8_t i;
-    uint8_t output;
+    uint8_t output = 0;
     for(i = 0; i < len; i++){
         // Validate data
         if((array[s_idx + i] < '0') || (array[s_idx + i] > '9')){

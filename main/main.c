@@ -25,7 +25,7 @@ void app_main(void){
 
     // Start Tasks
     xTaskCreate(Toggle_2, "Toggle_2", 4096, NULL, 1, &xToggle2_Handle);
-    xTaskCreate(Read_GPS, "Read_GPS", 8192, NULL, 2, &xRead_GPS_Handle);
+    xTaskCreate(Read_GPS, "Read_GPS", 4096, NULL, 2, &xRead_GPS_Handle); // Using about 2k stack space
 
     // Done with app_main. Main task will self delete
     return;
