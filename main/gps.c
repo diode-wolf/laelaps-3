@@ -11,6 +11,7 @@ Last Built With ESP-IDF v5.2.2
 
 // Include Header Libraries
 #include <stdio.h>
+#include <stdlib>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
@@ -51,9 +52,14 @@ void Read_GPS(void *args){
             found_data = Get_GGA_Start((char*)gps_rx_data, len_data_read, &start_data_idx, &data_length);
             if(found_data){
                 Extract_GPS_Data((char*) gps_rx_data, start_data_idx, data_length, &current_gps_data);
+
+                // Temp debug
+                ESP_LOGI(GPS_TAG, "Lattitude: %.5f\n", current_gps_data.lat);
+                ESP_LOGI(GPS_TAG, "Longitude: %.5f\n", current_gps_data.lon);
+                ESP_LOGI(GPS_TAG, "Altitude: %.1f\n", current_gps_data.altitude);
+                ESP_LOGI(GPS_TAG, "UTC Time: %d:%d:%d\n", current_gps_data.utc_hours, current_gps_data.utc_minutes, current_gps_data.utc_seconds);
+                ESP_LOGI(GPS_TAG, "# Sats: %d\n", current_gps_data.sats);
             }
-            // gps_rx_ptr[len_data_read] = '\0';     // Add null to terminate string
-            // ESP_LOGI(GPS_TAG, "%s", (char *) gps_rx_ptr);
         }
         vTaskDelay(pdMS_TO_TICKS(500));
     }
@@ -70,26 +76,53 @@ int8_t Extract_GPS_Data(char *data, uint16_t start_idx, uint16_t len, gps_data_t
     const char *Ext_GPS_TAG = "Extract_GPS";
     uint16_t i;
     uint8_t num_commas = 0;
+    uint8_t gps_str_ptr = 0;
     char gps_strings[NMEA_FIELDS][NMEA_FIELD_MAX_LEN];
-    Clear_Array(gps_strings, NMEA_FIELD_MAX_LEN * NMEA_FIELDS);
+    float lattitude = 0.0;
+    float longitude = 0.0;
+    float altitude = 0.0;
+
+    // Initalize arrays to hold gps data
+    for(i = 0; i < NMEA_FIELDS; i++){
+        Clear_Array(gps_strings[i], NMEA_FIELD_MAX_LEN);
+    }
 
     // Seperate fields into sub arrays
     for(i = 0; i < len; i++){
         if(data[i + start_idx] == ','){
             num_commas++;
+            gps_str_ptr = 0;
+            
+            // If have found all fields, break from loop. Done scanning
+            if(num_commas >= NMEA_FIELDS){
+                break;
+            }
             continue;
         }
 
-        gps_strings[num_commas][i] = data[i + start_idx];
+        if(num_commas < NMEA_FIELDS){
+            gps_strings[num_commas][gps_str_ptr] = data[i + start_idx];
+            gps_str_ptr++;  
+        }
     }
 
-    // Temp debug
-    ESP_LOGI(Ext_GPS_TAG, "%s\n", gps_strings[0]);
-    ESP_LOGI(Ext_GPS_TAG, "%s\n", gps_strings[1]);
-    ESP_LOGI(Ext_GPS_TAG, "%s\n", gps_strings[2]);
-    ESP_LOGI(Ext_GPS_TAG, "%s\n", gps_strings[3]);
-    ESP_LOGI(Ext_GPS_TAG, "%s\n", gps_strings[4]);
-    ESP_LOGI(Ext_GPS_TAG, "%s\n", gps_strings[5]);
+    // Convert from strings to ints or floats
+    output->utc_hour = Str_2_Int(gps_strings[0], 0, 2);
+    output->utc_minute = Str_2_Int(gps_strings[0], 2, 2);
+    output->utc_second = Str_2_Int(gps_strings[0], 4, 2);
+
+    lattitude += Str_2_Int(gps_strings[1], 0, 2);
+    lattitude += (atof(&gps_strings[1][2])) / 60;
+    if(gps_strings[2][0] == 'S') lattitude *= -1;
+    output->lat = lattitude;
+
+    longitude += Str_2_Int(gps_strings[3], 0, 3);
+    longitude += (atof(&gps_strings[3][3])) / 60;
+    if(gps_strings[4][0] == 'W') longitude *= -1;
+    output->lon = longitude;
+
+    output->sats = Str_2_Int(gps_strings[6], 0, 2);
+    output->altitude = atof(gps_strings[8]);
 
     return 1;
 }
@@ -106,10 +139,10 @@ int8_t Get_GGA_Start(char* array, uint16_t len_to_scan, uint16_t* s_idx_ptr, uin
     uint16_t i;
     uint8_t found_start = FALSE;
     uint8_t cmp_str_idx = 0;
-    char cmp_str[7] = "$GPGGA,"
+    char cmp_str[7] = "$GPGGA,";
     const char *GGA_Start_TAG = "GGA_Start";
 
-    for(i = 0; i < len_to_scan, i++){
+    for(i = 0; i < len_to_scan; i++){
         // If match, move to checking for the next character
         if(array[i] == cmp_str[cmp_str_idx]){
             cmp_str_idx++;
@@ -122,7 +155,7 @@ int8_t Get_GGA_Start(char* array, uint16_t len_to_scan, uint16_t* s_idx_ptr, uin
         if(cmp_str_idx >= 7){
             cmp_str_idx = 0;
             found_start = TRUE;
-            *s_idx_ptr = i;
+            *s_idx_ptr = i + 1;         // +1 gives 1st character of data rather than end of "$GPGGA," string
 
             // DEBUG
             ESP_LOGI(GGA_Start_TAG, "Found Start, %u", *s_idx_ptr);
@@ -154,4 +187,27 @@ void Clear_Array(char* array, uint16_t len){
         array[i] = '\0';
     }
     return;
+}
+
+/*
+Str_2_Int
+This function takes a pointer to a character array, an index to a starting point in that array,
+and a length to read. It then reads the specified number of characters and converts to an unsigned
+integer. If the specified characters are not numeric, function returns 0. Number must be less than 256
+*/
+uint8_t Str_2_Int(char* array, uint8_t s_idx, uint8_t len){
+    uint8_t i;
+    uint8_t output;
+    for(i = 0; i < len; i++){
+        // Validate data
+        if((array[s_idx + i] < '0') || (array[s_idx + i] > '9')){
+            output = 0;
+            return output;
+        }
+
+        // If data good, convert to int
+        output *= 10;
+        output += array[s_idx + i] - ASCII_OFFSET;
+    }
+    return output;
 }

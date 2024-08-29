@@ -12,11 +12,22 @@ Last Built With ESP-IDF v5.2.2
 #ifndef GPS_H
 #define GPS_H
 
+// Macros
+#define NMEA_FIELD_MAX_LEN  12
+#define NMEA_FIELDS         9
+#define UART2_RX_BUF_LEN    1024
+#define UART2_TX_BUF_LEN    0
+#define ASCII_OFFSET        0x30
+
+#define TRUE                1
+#define FALSE               0
+
+
+// Custom data types
 // Struct to hold gps data
 typedef struct GPS_Data{
     float lat;
     float lon;
-    float accuracy;
     float altitude;
     uint8_t utc_hour;
     uint8_t utc_minute;
@@ -33,14 +44,4 @@ typedef struct NMEA_Fields{
     char sat_str[NMEA_FIELD_MAX_LEN];
     char utc_str[NMEA_FIELD_MAX_LEN];
 } nmea_fields_t;
-
-#define NMEA_FIELD_MAX_LEN  12
-#define NMEA_FIELDS         6
-#define UART2_RX_BUF_LEN    1024
-#define UART2_TX_BUF_LEN    0
-
-#define TRUE                1
-#define FALSE               0
-
-
 #endif
