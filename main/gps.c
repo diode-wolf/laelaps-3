@@ -22,7 +22,15 @@ Last Built With ESP-IDF v5.2.2
 #include "functions.h"
 #include "init.h"
 
-// EXAMPLE FUNCTIONS
+// GLOBAL VARIABLE
+// ONLY PERFORM CRITICAL TASKS WHILE PROTECTED!!!
+// USE FOLLOWING SPINLOCK TO ENSURE EXCLUSION
+portMUX_TYPE gps_data_spinlock = portMUX_INITIALIZER_UNLOCKED;
+gps_data_t current_gps_data;
+
+
+
+// EXAMPLE FUNCTION
 void Toggle_2(void *args){
     // Variables local to this task
     uint8_t led2_state = 0;
@@ -39,7 +47,6 @@ void Read_GPS(void *args){
     // Variables local to this task
     const char *GPS_TAG = "Read_GPS";
     uint8_t *gps_rx_data = (uint8_t *) malloc(UART2_RX_BUF_LEN);
-    gps_data_t current_gps_data;
     uint8_t len_data_read = 0;
     uint16_t start_data_idx;
     uint16_t data_length;
@@ -52,15 +59,7 @@ void Read_GPS(void *args){
             found_data = Get_GGA_Start((char*)gps_rx_data, len_data_read, &start_data_idx, &data_length);
             if(found_data){
                 Extract_GPS_Data((char*) gps_rx_data, start_data_idx, data_length, &current_gps_data);
-
-                // Temp debug
-                ESP_LOGI(GPS_TAG, "UTC Time: %d:%d:%d", current_gps_data.utc_hour, current_gps_data.utc_minute, current_gps_data.utc_second);
-                ESP_LOGI(GPS_TAG, "Lattitude: %.5f", current_gps_data.lat);
-                ESP_LOGI(GPS_TAG, "Longitude: %.5f", current_gps_data.lon);
-                ESP_LOGI(GPS_TAG, "Altitude: %.1f", current_gps_data.altitude);
-                ESP_LOGI(GPS_TAG, "# Sats: %d", current_gps_data.sats);
-                
-                ESP_LOGI(GPS_TAG, "Stack High Water: %d", uxTaskGetStackHighWaterMark(NULL));
+                GPS_PRINT_DEBUG
             }
         }
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -80,8 +79,15 @@ int8_t Extract_GPS_Data(char *data, uint16_t start_idx, uint16_t len, gps_data_t
     uint8_t num_commas = 0;
     uint8_t gps_str_ptr = 0;
     char gps_strings[NMEA_FIELDS][NMEA_FIELD_MAX_LEN];
+
     float lattitude = 0.0;
     float longitude = 0.0;
+    float altitude;
+    float hdop;
+    uint8_t num_sats;
+    uint8_t utc_min;
+    uint8_t utc_hr;
+    uint8_t utc_sec;
 
     // Initalize arrays to hold gps data
     for(i = 0; i < NMEA_FIELDS; i++){
@@ -108,22 +114,34 @@ int8_t Extract_GPS_Data(char *data, uint16_t start_idx, uint16_t len, gps_data_t
     }
 
     // Convert from strings to ints or floats
-    output->utc_hour = Str_2_Int(gps_strings[0], 0, 2);
-    output->utc_minute = Str_2_Int(gps_strings[0], 2, 2);
-    output->utc_second = Str_2_Int(gps_strings[0], 4, 2);
+    utc_hr = Str_2_Int(gps_strings[0], 0, 2);
+    utc_min = Str_2_Int(gps_strings[0], 2, 2);
+    utc_sec = Str_2_Int(gps_strings[0], 4, 2);
 
     lattitude += Str_2_Int(gps_strings[1], 0, 2);
     lattitude += (atof(&gps_strings[1][2])) / 60;
     if(gps_strings[2][0] == 'S') lattitude *= -1;
-    output->lat = lattitude;
 
     longitude += Str_2_Int(gps_strings[3], 0, 3);
     longitude += (atof(&gps_strings[3][3])) / 60;
     if(gps_strings[4][0] == 'W') longitude *= -1;
-    output->lon = longitude;
 
-    output->sats = Str_2_Int(gps_strings[6], 0, 2);
-    output->altitude = atof(gps_strings[8]);
+    num_sats = Str_2_Int(gps_strings[6], 0, 2);
+    hdop = atof(gps_strings[7]);
+    altitude = atof(gps_strings[8]);
+
+    // Write data to global variable for use by other tasks
+    // Freezes all other tasks. Use spinlock sparingly
+    portENTER_CRITICAL(&gps_data_spinlock);
+    current_gps_data.lat = lattitude;
+    current_gps_data.lon = longitude;
+    current_gps_data.altitude = altitude;
+    current_gps_data.hdop = hdop;
+    current_gps_data.utc_hour = utc_hr;
+    current_gps_data.utc_minute = utc_min;
+    current_gps_data.utc_second = utc_sec;
+    current_gps_data.sats = num_sats;
+    portEXIT_CRITICAL(&gps_data_spinlock);
 
     return 1;
 }
