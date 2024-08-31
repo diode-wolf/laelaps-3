@@ -15,6 +15,7 @@ Last Built With ESP-IDF v5.2.2
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "driver/uart.h"
+#include "driver/mcpwm_prelude.h"
 #include "esp_log.h"
 #include "sdkconfig.h"
 #include "init.h"

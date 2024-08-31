@@ -31,17 +31,17 @@ gps_data_t current_gps_data;
 
 
 // EXAMPLE FUNCTION
-void Toggle_2(void *args){
-    // Variables local to this task
-    uint8_t led2_state = 0;
-    const char *TOG2_TAG = "Toggle_2";
+// void Toggle_2(void *args){
+//     // Variables local to this task
+//     uint8_t led2_state = 0;
+//     const char *TOG2_TAG = "Toggle_2";
 
-    while(1){
-        gpio_set_level(LED2_PIN, led2_state);
-        led2_state = !led2_state;
-        vTaskDelay(pdMS_TO_TICKS(LED2_RATE));
-    }
-}
+//     while(1){
+//         gpio_set_level(LED2_PIN, led2_state);
+//         led2_state = !led2_state;
+//         vTaskDelay(pdMS_TO_TICKS(LED2_RATE));
+//     }
+// }
 
 void Read_GPS(void *args){
     // Variables local to this task
