@@ -9,6 +9,7 @@ It will initalize the system, spawn threads, and then exit
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "nvs_flash.h"
 #include "sdkconfig.h"
 #include "main.h"
 #include "functions.h"
@@ -20,10 +21,21 @@ TaskHandle_t xControl_Loop = NULL;
 
 
 void app_main(void){
+    // Run NVS setup
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+      ESP_ERROR_CHECK(nvs_flash_erase());
+      ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+
+
     // INIT ALL
     Init_Ports();
     Init_UART2();
     Init_Servos();
+    Init_Wifi_Sta();
 
     // Start Tasks
     //xTaskCreate(Toggle_2, "Toggle_2", 4096, NULL, 1, &xToggle2_Handle);

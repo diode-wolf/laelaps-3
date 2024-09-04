@@ -36,4 +36,7 @@ void Init_Servos(void);
 void Set_Servo(uint8_t servo, int16_t position);
 uint16_t Map_Servo_Deg_PWM(int16_t degrees);
 
+// WIFI_STA.C
+void Init_Wifi_Sta(void);
+
 #endif
