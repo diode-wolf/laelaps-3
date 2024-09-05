@@ -194,20 +194,6 @@ int8_t Get_GGA_Start(char* array, uint16_t len_to_scan, uint16_t* s_idx_ptr, uin
     return FALSE;
 }
 
-
-/*
-Clear_Array
-This function sets the contents of a character array to all zeros
-Takes pointer to array, and array length. Does not return anything
-*/
-void Clear_Array(char* array, uint16_t len){
-    uint16_t i;
-    for(i = 0; i < len; i++){
-        array[i] = '\0';
-    }
-    return;
-}
-
 /*
 Str_2_Int
 This function takes a pointer to a character array, an index to a starting point in that array,

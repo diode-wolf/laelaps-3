@@ -1,9 +1,10 @@
-idf_component_register(SRCS "tcp_client.c" "wifi_sta.c" "main.c"
+idf_component_register(SRCS "process_usb_data.c" "tcp_client.c" "wifi_sta.c" "main.c"
                     "gps.c"
                     "init.c"
                     "servo.c"
                     "control.c"
                     "wifi_sta.c"
                     "tcp_client.c"
+                    "process_usb_data.c"
                     # REQUIRES "main.c"
                     INCLUDE_DIRS ".")

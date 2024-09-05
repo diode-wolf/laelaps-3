@@ -43,4 +43,9 @@ void Wifi_Connect_Task(void *pvParameters);
 // TCP_CLIENT.C
 void TCP_Client_Task(void *pvParameters);
 
+// PROCESS_USB_DATA.C
+void Clear_Array(char* array, uint16_t len);
+void Init_UART0(void);
+void Process_USB_Rx_Data_Task(void *args);
+
 #endif
