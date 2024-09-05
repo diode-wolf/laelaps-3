@@ -30,6 +30,12 @@ Last Built With ESP-IDF v5.2.2
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
 
+// Flag to indicate that the wifi should try to connect to the access point
+uint8_t wifi_disconnected = 1;
+
+// Flag to indicate first time start up. Some wifi processes should only be done on start up, not every time trying to connect
+uint8_t wifi_first_start = 1;
+
 /* The event group allows multiple bits for each event, but we only care about two events:
  * - we are connected to the AP with an IP
  * - we failed to connect after the maximum amount of retries */
@@ -39,7 +45,6 @@ static EventGroupHandle_t s_wifi_event_group;
 static const char *TAG = "wifi station";
 
 static int s_retry_num = 0;
-
 
 static void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
@@ -63,30 +68,33 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
+
+// Code to start the wifi in station mode
 void Init_Wifi_Sta(void){
-    s_wifi_event_group = xEventGroupCreate();
+    // Only run this the first time starting up
+    if(wifi_first_start){
+        wifi_first_start = 0;
+        s_wifi_event_group = xEventGroupCreate();
+        esp_netif_create_default_wifi_sta();
 
-    ESP_ERROR_CHECK(esp_netif_init());
+        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+        ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
+        esp_event_handler_instance_t instance_any_id;
+        esp_event_handler_instance_t instance_got_ip;
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+                                                            ESP_EVENT_ANY_ID,
+                                                            &event_handler,
+                                                            NULL,
+                                                            &instance_any_id));
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
+                                                            IP_EVENT_STA_GOT_IP,
+                                                            &event_handler,
+                                                            NULL,
+                                                            &instance_got_ip));
+    }
 
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-
-    esp_event_handler_instance_t instance_any_id;
-    esp_event_handler_instance_t instance_got_ip;
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
-                                                        ESP_EVENT_ANY_ID,
-                                                        &event_handler,
-                                                        NULL,
-                                                        &instance_any_id));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
-                                                        IP_EVENT_STA_GOT_IP,
-                                                        &event_handler,
-                                                        NULL,
-                                                        &instance_got_ip));
-
+    // Run this every time trying to reconnect
     wifi_config_t wifi_config = {
         .sta = {
             .ssid = ESP_WIFI_SSID,
@@ -115,10 +123,26 @@ void Init_Wifi_Sta(void){
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
                  ESP_WIFI_SSID, ESP_WIFI_PASS);
+                 wifi_disconnected = 0;
     } else if (bits & WIFI_FAIL_BIT) {
         ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
                  ESP_WIFI_SSID, ESP_WIFI_PASS);
+                 wifi_disconnected = 1;
     } else {
         ESP_LOGE(TAG, "UNEXPECTED EVENT");
     }
 }
+
+
+// This is the task function. It checks every 5 seconds to see if the wifi is connected
+// If not, attempts to connect
+void Wifi_Connect_Task(void *pvParameters){
+    while(1){
+        if(wifi_disconnected){
+            Init_Wifi_Sta();
+        }
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+}
+
+

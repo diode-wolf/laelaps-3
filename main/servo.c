@@ -99,7 +99,7 @@ void Set_Servo(uint8_t servo, int16_t position){
     uint16_t compare_value;
     // Input validation
     if ((position < SERVO_MIN_DEG) || (position > SERVO_MAX_DEG)){
-        ESP_LOGI(SERVO_TAG, "%d invalid angle", position);
+        ESP_LOGE(SERVO_TAG, "Servo %d invalid angle %d degrees", servo, position);
         return;
     }
 

@@ -38,5 +38,9 @@ uint16_t Map_Servo_Deg_PWM(int16_t degrees);
 
 // WIFI_STA.C
 void Init_Wifi_Sta(void);
+void Wifi_Connect_Task(void *pvParameters);
+
+// TCP_CLIENT.C
+void TCP_Client_Task(void *pvParameters);
 
 #endif

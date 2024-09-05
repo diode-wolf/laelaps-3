@@ -14,25 +14,20 @@
 #include "errno.h"
 #include "esp_system.h"
 #include "esp_event.h"
+#include "esp_netif.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
-#include "protocol_examples_common.h"
 
-/**
- * @brief Indicates that the file descriptor represents an invalid (uninitialized or closed) socket
- *
- * Used in the TCP server structure `sock[]` which holds list of active clients we serve.
- */
+#define TCP_CLIENT_CONNECT_ADDRESS  "192.168.4.1"
+#define TCP_CLIENT_CONNECT_PORT     "7983"
 #define INVALID_SOCK (-1)
-
-/**
- * @brief Time in ms to yield to all tasks when a non-blocking socket would block
- *
- * Non-blocking socket operations are typically executed in a separate task validating
- * the socket status. Whenever the socket returns `EAGAIN` (idle status, i.e. would block)
- * we have to yield to all tasks to prevent lower priority tasks from starving.
- */
 #define YIELD_TO_ALL_MS 50
+#define TRUE    1
+#define FALSE   0
+
+static int sock = INVALID_SOCK;
+static uint8_t socket_error_flag = FALSE;
+
 
 /**
  * @brief Utility to log socket errors
@@ -98,7 +93,7 @@ static int socket_send(const char *tag, const int sock, const char * data, const
         int written = send(sock, data + (len - to_write), to_write, 0);
         if (written < 0 && errno != EINPROGRESS && errno != EAGAIN && errno != EWOULDBLOCK) {
             log_socket_error(tag, sock, errno, "Error occurred during sending");
-            return -1;
+            socket_error_flag = TRUE;
         }
         to_write -= written;
     }
@@ -106,113 +101,117 @@ static int socket_send(const char *tag, const int sock, const char * data, const
 }
 
 
-#ifdef CONFIG_EXAMPLE_TCP_CLIENT
-
-static void tcp_client_task(void *pvParameters)
-{
-    static const char *TAG = "nonblocking-socket-client";
+// This is the tcp client thread
+// Reads and sends data from laelaps server
+void TCP_Client_Task(void *pvParameters){
+    static const char *TAG = "TCP-client";
     static const char *payload = "GET / HTTP/1.1\r\n\r\n";
     static char rx_buffer[128];
 
     struct addrinfo hints = { .ai_socktype = SOCK_STREAM };
     struct addrinfo *address_info;
-    int sock = INVALID_SOCK;
 
-    int res = getaddrinfo(CONFIG_EXAMPLE_TCP_CLIENT_CONNECT_ADDRESS, CONFIG_EXAMPLE_TCP_CLIENT_CONNECT_PORT, &hints, &address_info);
+    fd_set fdset;
+    struct timeval connect_timeout;
+    connect_timeout.tv_sec = 1;         // Set to 1s timeout
+    
+
+
+    // Convert address from string, create socket, and set as not blocking
+    int res = getaddrinfo(TCP_CLIENT_CONNECT_ADDRESS, TCP_CLIENT_CONNECT_PORT, &hints, &address_info);
     if (res != 0 || address_info == NULL) {
         ESP_LOGE(TAG, "couldn't get hostname for `%s` "
-                      "getaddrinfo() returns %d, addrinfo=%p", CONFIG_EXAMPLE_TCP_CLIENT_CONNECT_ADDRESS, res, address_info);
-        goto error;
+                      "getaddrinfo() returns %d, addrinfo=%p", TCP_CLIENT_CONNECT_ADDRESS, res, address_info);
+        vTaskDelete(NULL);
     }
 
-    // Creating client's socket
-    sock = socket(address_info->ai_family, address_info->ai_socktype, address_info->ai_protocol);
-    if (sock < 0) {
-        log_socket_error(TAG, sock, errno, "Unable to create socket");
-        goto error;
-    }
-    ESP_LOGI(TAG, "Socket created, connecting to %s:%s", CONFIG_EXAMPLE_TCP_CLIENT_CONNECT_ADDRESS, CONFIG_EXAMPLE_TCP_CLIENT_CONNECT_PORT);
+    //------------------------------------------------------------------------------------------
+    // Try to create and connect socket. On success, enters another infinite while loop checking for data
+    // On fail, wait one second and try to connect again
+    while(1){
+        vTaskDelay(pdMS_TO_TICKS(1000));         // Wait 1s before attempting to reconnect again
+        // Set socket error to false, make sure socket is closed befor attempting to connect
+        socket_error_flag = FALSE;
+        if (sock != INVALID_SOCK) {
+            close(sock);
+        }
 
-    // Marking the socket as non-blocking
-    int flags = fcntl(sock, F_GETFL);
-    if (fcntl(sock, F_SETFL, flags | O_NONBLOCK) == -1) {
-        log_socket_error(TAG, sock, errno, "Unable to set socket non blocking");
-    }
+        // Creating client's socket
+        sock = socket(address_info->ai_family, address_info->ai_socktype, address_info->ai_protocol);
+        if (sock < 0) {
+            log_socket_error(TAG, sock, errno, "Unable to create socket");
+            vTaskDelete(NULL);
+        }
+        ESP_LOGI(TAG, "Socket created, connecting to %s:%s", TCP_CLIENT_CONNECT_ADDRESS, TCP_CLIENT_CONNECT_PORT);
 
-    if (connect(sock, address_info->ai_addr, address_info->ai_addrlen) != 0) {
-        if (errno == EINPROGRESS) {
-            ESP_LOGD(TAG, "connection in progress");
-            fd_set fdset;
-            FD_ZERO(&fdset);
-            FD_SET(sock, &fdset);
+        // Marking the socket as non-blocking
+        int flags = fcntl(sock, F_GETFL);
+        if (fcntl(sock, F_SETFL, flags | O_NONBLOCK) == -1) {
+            log_socket_error(TAG, sock, errno, "Unable to set socket non blocking");
+        }
 
-            // Connection in progress -> have to wait until the connecting socket is marked as writable, i.e. connection completes
-            res = select(sock+1, NULL, &fdset, NULL, NULL);
-            if (res < 0) {
-                log_socket_error(TAG, sock, errno, "Error during connection: select for socket to be writable");
-                goto error;
-            } else if (res == 0) {
-                log_socket_error(TAG, sock, errno, "Connection timeout: select for socket to be writable");
-                goto error;
-            } else {
-                int sockerr;
-                socklen_t len = (socklen_t)sizeof(int);
+        // Attempt to connect while checking for errors
+        if (connect(sock, address_info->ai_addr, address_info->ai_addrlen) != 0) {
+            // If connection is in progress
+            if (errno == EINPROGRESS) {
+                ESP_LOGD(TAG, "connection in progress");
+                FD_ZERO(&fdset);
+                FD_SET(sock, &fdset);
 
-                if (getsockopt(sock, SOL_SOCKET, SO_ERROR, (void*)(&sockerr), &len) < 0) {
-                    log_socket_error(TAG, sock, errno, "Error when getting socket error using getsockopt()");
-                    goto error;
-                }
-                if (sockerr) {
-                    log_socket_error(TAG, sock, sockerr, "Connection error");
-                    goto error;
+                // Wait 1s for socket to be ready indicated by file descriptor becoming writeable
+                res = select(sock+1, NULL, &fdset, NULL, &connect_timeout);
+                if (res < 0) {
+                    log_socket_error(TAG, sock, errno, "Error during connection: Waiting for socket to be writable");
+                    socket_error_flag = TRUE;
+                } 
+                else if (res == 0) {
+                    log_socket_error(TAG, sock, errno, "Connection timeout: Waiting for socket to be writable");
+                    socket_error_flag = TRUE;
+                } 
+                else {
+                    int sockerr;
+                    socklen_t len = (socklen_t)sizeof(int);
+
+                    // If socket indicated ready for write, check for socket errors
+                    if (getsockopt(sock, SOL_SOCKET, SO_ERROR, (void*)(&sockerr), &len) < 0) {
+                        log_socket_error(TAG, sock, errno, "Error when getting socket error using getsockopt()");
+                        socket_error_flag = TRUE;
+                    }
+                    // If error indicted, print here
+                    if (sockerr) {
+                        log_socket_error(TAG, sock, sockerr, "Connection error");
+                        socket_error_flag = TRUE;
+                    }
                 }
             }
-        } else {
-            log_socket_error(TAG, sock, errno, "Socket is unable to connect");
-            goto error;
+            // If connect failed and not in progress
+            else {
+                log_socket_error(TAG, sock, errno, "Socket is unable to connect");
+                socket_error_flag = TRUE;
+            }
         }
-    }
 
-    ESP_LOGI(TAG, "Client sends data to the server...");
-    int len = socket_send(TAG, sock, payload, strlen(payload));
-    if (len < 0) {
-        ESP_LOGE(TAG, "Error occurred during socket_send");
-        goto error;
-    }
-    ESP_LOGI(TAG, "Written: %.*s", len, payload);
+        // if socket_error_flag is still FALSE, we are connected to the server
+        if(!socket_error_flag){
+            // Continually check for incoming data
+            int len;
+            while(1){
+                len = try_receive(TAG, sock, rx_buffer, sizeof(rx_buffer));
+                if (len < 0) {
+                    // If error occured, break from inner loop so close and reconnect happens again
+                    ESP_LOGE(TAG, "Error occurred during try_receive");
+                    socket_error_flag = TRUE;
+                    break;
+                }
+                else if(len > 0){
+                    ESP_LOGI(TAG, "Received: %.*s", len, rx_buffer);
+                    // Do stuff with RX data here
+                }
+                vTaskDelay(pdMS_TO_TICKS(YIELD_TO_ALL_MS));
+            } // End rx while
+        }  // End if no error flag
+    } // End outer while
+} // End task
 
-    // Keep receiving until we have a reply
-    do {
-        len = try_receive(TAG, sock, rx_buffer, sizeof(rx_buffer));
-        if (len < 0) {
-            ESP_LOGE(TAG, "Error occurred during try_receive");
-            goto error;
-        }
-        vTaskDelay(pdMS_TO_TICKS(YIELD_TO_ALL_MS));
-    } while (len == 0);
-    ESP_LOGI(TAG, "Received: %.*s", len, rx_buffer);
 
-error:
-    if (sock != INVALID_SOCK) {
-        close(sock);
-    }
-    free(address_info);
-    vTaskDelete(NULL);
-
-}
-#endif // CONFIG_EXAMPLE_TCP_CLIENT
-
-void app_main(void)
-{
-    ESP_ERROR_CHECK(nvs_flash_init());
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-
-    /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
-     * Read "Establishing Wi-Fi or Ethernet Connection" section in
-     * examples/protocols/README.md for more information about this function.
-     */
-    ESP_ERROR_CHECK(example_connect());
-
-    xTaskCreate(tcp_client_task, "tcp_client", 4096, NULL, 5, NULL);
-}
+// End of File

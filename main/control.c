@@ -25,11 +25,11 @@ Last Built With ESP-IDF v5.2.2
 // Will add functionality later
 void Control_Loop(void *args){
     //const char* CTRL_TAG = "Control_Loop";
-    int16_t servo1_pos = -90;
-    int16_t servo2_pos = 90;
+    int16_t servo1_pos = 0;
+    int16_t servo2_pos = 0;
     int16_t servo_min_pos = -90;
     int16_t servo_max_pos = 90;
-    int16_t servo1_step = 10;
+    int16_t servo1_step = -10;
     int16_t servo2_step = 10;
 
     while(1){
