@@ -22,6 +22,8 @@ It will initalize the system, spawn threads, and then exit
 
 // Thread protection
 SemaphoreHandle_t tcp_rx_array_mutex;
+SemaphoreHandle_t gps_data_mutex;
+SemaphoreHandle_t gps_dest_mutex;
 
 
 //TaskHandle_t xToggle2_Handle = NULL;
@@ -34,7 +36,7 @@ TaskHandle_t xProcess_TCP = NULL;
 
 
 void app_main(void){
-  const char *MAIN_TAG = "App_Main";
+  //const char *MAIN_TAG = "App_Main";
   // Run NVS setup
   esp_err_t ret = nvs_flash_init();
   if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -49,6 +51,8 @@ void app_main(void){
 
   // Init Mutexes
   tcp_rx_array_mutex = xSemaphoreCreateMutex();
+  gps_data_mutex = xSemaphoreCreateMutex();
+  gps_dest_mutex = xSemaphoreCreateMutex();
 
   // INIT ALL
   Init_Ports();

@@ -10,6 +10,7 @@ Last Built With ESP-IDF v5.2.2
 */
 
 #include <string.h>
+#include <stdlib.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "errno.h"
@@ -18,13 +19,70 @@ Last Built With ESP-IDF v5.2.2
 #include "esp_log.h"
 #include "functions.h"
 #include "process_tcp_data.h"
+#include "gps.h"
 
 extern SemaphoreHandle_t tcp_rx_array_mutex;
+extern SemaphoreHandle_t gps_dest_mutex;
 
 // Static global variables
+gps_data_t gps_target;
 static char rx_data_storage[RX_DATA_ROWS][RX_DATA_COLUMNS];
 static uint8_t rx_data_row_idx = 0;
 static uint8_t rx_data_column_idx = 0;
+
+
+/*
+GPS_From_TCP
+This function takes a pointer to the string containing gps data and the length of the data string
+The function sets the values of the gps destination global variable
+Returns void
+*/
+void GPS_From_TCP(char* string, uint8_t len){
+    // 12 is somewhat arbetrary. Must be larger than longest possible string which is longitude (-xxx.xxxxx)
+    // First row is lattitude, 2nd is longitude
+    char gps_coord_strs[2][GPS_STR_MAX_LEN];
+    uint8_t lat_lon_idx = 0;
+    uint8_t gps_char_idx = 0;
+    float lattitude;
+    float longitude;
+
+    // Initalize the gps strings to zero
+    Clear_Array(gps_coord_strs[0], GPS_STR_MAX_LEN);
+    Clear_Array(gps_coord_strs[0], GPS_STR_MAX_LEN);
+
+    for(uint8_t i = 0; i < len; i++){
+        // If got a null exit loop
+        if(string[i] == '\0'){
+            break;
+        }
+
+        // If got a comma, go to the next field of the array
+        if(string[i] == ','){
+            lat_lon_idx = 1;
+            gps_char_idx = 0;
+            continue;
+        }
+
+        if(gps_char_idx < GPS_STR_MAX_LEN){             // Check to make sure index is less then length of array
+            gps_coord_strs[lat_lon_idx][gps_char_idx] = string[i];
+            gps_char_idx++;
+        }
+    }
+
+    // After exiting the loop, both rows of the array should be populated with the string repersentations of lat and lon
+    lattitude = atof(gps_coord_strs[0]);
+    longitude = atof(gps_coord_strs[1]);
+
+    // Take semaphore and write to global variables
+    xSemaphoreTake(gps_dest_mutex, portMAX_DELAY);
+    gps_target.lat = lattitude;
+    gps_target.lon = longitude;
+    xSemaphoreGive(gps_dest_mutex);
+
+    ESP_LOGI("GPS_Fom_TCP", "Target Lattitude: %.5f", lattitude);
+    ESP_LOGI("GPS_Fom_TCP", "Target Longitude: %.5f", lattitude);
+    return;
+}
 
 
 /*
@@ -82,10 +140,15 @@ void Process_TCP_Rx_Data_Task(void *pvParameters){
             // Process data
             ESP_LOGI(PROCESS_DATA_TAG, "%s", rx_data_storage[rx_row_idx_read]);
 
-            // If the line is an identification request from the client, send this laelap's HW ID
             sub_str_ptr = strstr(rx_data_storage[rx_row_idx_read], "$id-req");
+            // If the line is an identification request from the client, send this laelap's HW ID
             if(sub_str_ptr != NULL){
                 TCP_Write(PROCESS_DATA_TAG, LAELAPS_HWID, strlen(LAELAPS_HWID));
+            }
+            sub_str_ptr = strstr(rx_data_storage[rx_row_idx_read], "$gps-dest:");
+            if(sub_str_ptr != NULL){
+                // Data is of format $gps-dest:xxx.xxxxx,xxxx.xxxxx\r\n
+                GPS_From_TCP(&sub_str_ptr[10], strlen(&sub_str_ptr[10]));
             }
 
             // Increment read index

@@ -203,8 +203,7 @@ void TCP_Client_Task(void *pvParameters){
                     break;
                 }
                 else if(len > 0){
-                    ESP_LOGI(TAG, "Received: %.*s", len, rx_buffer);
-                    // Do stuff with RX data here
+                    // Write to storage buffer
                     Write_Rx_Storage(rx_buffer, len);
                 }
                 vTaskDelay(pdMS_TO_TICKS(YIELD_TO_ALL_MS));

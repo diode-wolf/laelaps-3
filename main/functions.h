@@ -52,5 +52,6 @@ void Process_USB_Rx_Data_Task(void *args);
 // PROCESS_TCP_DATA.C
 void Process_TCP_Rx_Data_Task(void *pvParameters);
 void Write_Rx_Storage(char* data, uint16_t len);
+void GPS_From_TCP(char* string, uint8_t len);
 
 #endif

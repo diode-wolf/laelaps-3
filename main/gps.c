@@ -25,7 +25,7 @@ Last Built With ESP-IDF v5.2.2
 // GLOBAL VARIABLE
 // ONLY PERFORM CRITICAL TASKS WHILE PROTECTED!!!
 // USE FOLLOWING SPINLOCK TO ENSURE EXCLUSION
-portMUX_TYPE gps_data_spinlock = portMUX_INITIALIZER_UNLOCKED;
+extern SemaphoreHandle_t gps_data_mutex;
 gps_data_t current_gps_data;
 
 
@@ -74,7 +74,7 @@ gps data from the string, converts it to floats/ints, and stores in the output s
 The function assumes that the gps data is stored in csv strings as per  NMEA standards
 */
 int8_t Extract_GPS_Data(char *data, uint16_t start_idx, uint16_t len, gps_data_t *output){
-    const char *Ext_GPS_TAG = "Extract_GPS";
+    //const char *Ext_GPS_TAG = "Extract_GPS";
     uint16_t i;
     uint8_t num_commas = 0;
     uint8_t gps_str_ptr = 0;
@@ -132,7 +132,7 @@ int8_t Extract_GPS_Data(char *data, uint16_t start_idx, uint16_t len, gps_data_t
 
     // Write data to global variable for use by other tasks
     // Freezes all other tasks. Use spinlock sparingly
-    portENTER_CRITICAL(&gps_data_spinlock);
+    xSemaphoreTake(gps_data_mutex, portMAX_DELAY);
     current_gps_data.lat = lattitude;
     current_gps_data.lon = longitude;
     current_gps_data.altitude = altitude;
@@ -141,7 +141,7 @@ int8_t Extract_GPS_Data(char *data, uint16_t start_idx, uint16_t len, gps_data_t
     current_gps_data.utc_minute = utc_min;
     current_gps_data.utc_second = utc_sec;
     current_gps_data.sats = num_sats;
-    portEXIT_CRITICAL(&gps_data_spinlock);
+    xSemaphoreGive(gps_data_mutex);
 
     return 1;
 }
@@ -159,7 +159,7 @@ int8_t Get_GGA_Start(char* array, uint16_t len_to_scan, uint16_t* s_idx_ptr, uin
     uint8_t found_start = FALSE;
     uint8_t cmp_str_idx = 0;
     char cmp_str[7] = "$GPGGA,";
-    const char *GGA_Start_TAG = "GGA_Start";
+    //const char *GGA_Start_TAG = "GGA_Start";
 
     for(i = 0; i < len_to_scan; i++){
         // If match, move to checking for the next character

@@ -18,6 +18,7 @@ Last Built With ESP-IDF v5.2.2
 
 #define RX_DATA_ROWS        5
 #define RX_DATA_COLUMNS     64
+#define GPS_STR_MAX_LEN     12
 #define ASCII_OFFSET        0x30
 
 
