@@ -42,10 +42,15 @@ void Wifi_Connect_Task(void *pvParameters);
 
 // TCP_CLIENT.C
 void TCP_Client_Task(void *pvParameters);
+int TCP_Write(const char *tag, const char * data, const size_t len);
 
 // PROCESS_USB_DATA.C
 void Clear_Array(char* array, uint16_t len);
 void Init_UART0(void);
 void Process_USB_Rx_Data_Task(void *args);
+
+// PROCESS_TCP_DATA.C
+void Process_TCP_Rx_Data_Task(void *pvParameters);
+void Write_Rx_Storage(char* data, uint16_t len);
 
 #endif

@@ -17,6 +17,7 @@
 #include "esp_netif.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
+#include "functions.h"
 
 #define TCP_CLIENT_CONNECT_ADDRESS  "192.168.4.1"
 #define TCP_CLIENT_CONNECT_PORT     "7983"
@@ -57,7 +58,7 @@ static void log_socket_error(const char *tag, const int sock, const int err, con
  *          -1 : Error occurred during socket read operation
  *          -2 : Socket is not connected, to distinguish between an actual socket error and active disconnection
  */
-static int try_receive(const char *tag, const int sock, char * data, size_t max_len)
+static int try_receive(const char *tag, char * data, size_t max_len)
 {
     int len = recv(sock, data, max_len, 0);
     if (len < 0) {
@@ -86,8 +87,7 @@ static int try_receive(const char *tag, const int sock, char * data, size_t max_
  *          >0 : Size the written data
  *          -1 : Error occurred during socket write operation
  */
-static int socket_send(const char *tag, const int sock, const char * data, const size_t len)
-{
+int TCP_Write(const char *tag, const char * data, const size_t len){
     int to_write = len;
     while (to_write > 0) {
         int written = send(sock, data + (len - to_write), to_write, 0);
@@ -105,7 +105,6 @@ static int socket_send(const char *tag, const int sock, const char * data, const
 // Reads and sends data from laelaps server
 void TCP_Client_Task(void *pvParameters){
     static const char *TAG = "TCP-client";
-    static const char *payload = "GET / HTTP/1.1\r\n\r\n";
     static char rx_buffer[128];
 
     struct addrinfo hints = { .ai_socktype = SOCK_STREAM };
@@ -196,7 +195,7 @@ void TCP_Client_Task(void *pvParameters){
             // Continually check for incoming data
             int len;
             while(1){
-                len = try_receive(TAG, sock, rx_buffer, sizeof(rx_buffer));
+                len = try_receive(TAG, rx_buffer, sizeof(rx_buffer));
                 if (len < 0) {
                     // If error occured, break from inner loop so close and reconnect happens again
                     ESP_LOGE(TAG, "Error occurred during try_receive");
@@ -206,6 +205,7 @@ void TCP_Client_Task(void *pvParameters){
                 else if(len > 0){
                     ESP_LOGI(TAG, "Received: %.*s", len, rx_buffer);
                     // Do stuff with RX data here
+                    Write_Rx_Storage(rx_buffer, len);
                 }
                 vTaskDelay(pdMS_TO_TICKS(YIELD_TO_ALL_MS));
             } // End rx while

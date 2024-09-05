@@ -116,11 +116,10 @@ void Process_USB_Rx_Data_Task(void *args){
             ESP_LOGI(USB_RX_TAG, "%s", usb_rx_data_storage[usb_rx_read_row_idx]);
 
             // Do stuff with the data
-            // Command to forward data to laelaps is of form $fwd-laelaps-#:xxxxxxxxxx
-            // Where # is the number of the laelaps to send the data to and xxxx repersents the data to send
+            // Command to forward data to the server is of form $fwd-laelaps:
             sub_str_ptr = strstr(usb_rx_data_storage[usb_rx_read_row_idx], "$fwd-server:");
             if(sub_str_ptr != NULL){
-                // TCP write sub_str_ptr[12]
+                TCP_Write(USB_RX_TAG, &sub_str_ptr[12], strlen(&sub_str_ptr[12]));      // 12 reperents the index of the first character after "$fwd-server:"
                 ESP_LOGI(USB_RX_TAG, "Forwarded to server: %s", &sub_str_ptr[12]);
             }
 
