@@ -80,7 +80,7 @@ void GPS_From_TCP(char* string, uint8_t len){
     xSemaphoreGive(gps_dest_mutex);
 
     ESP_LOGI("GPS_Fom_TCP", "Target Lattitude: %.5f", lattitude);
-    ESP_LOGI("GPS_Fom_TCP", "Target Longitude: %.5f", lattitude);
+    ESP_LOGI("GPS_Fom_TCP", "Target Longitude: %.5f", longitude);
     return;
 }
 
